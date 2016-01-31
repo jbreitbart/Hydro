@@ -55,7 +55,7 @@ FFLAGS_MPI =
 
 # OpenMP link options
 #--------------------
-LDFLAGS_OMP = -fopenmp -lm
+LDFLAGS_OMP = -fopenmp -lnuma -lm
 
 # MPI link options
 #--------------------

@@ -8,7 +8,7 @@ include ../../../Arch/make.inc
 CFLAGS += $(CFLAGS_MPI) $(DEF)
 CFLAGS += $(CFLAGS_OMP) -g
 CFLAGS += $(CFLAGS_FTI)
-CFLAGS += -vec-report3
+#CFLAGS += -vec-report3
 LDFLAGS += $(LDFLAGS_MPI)
 LDFLAGS += $(LDFLAGS_OMP)
 LDFLAGS += $(LDFLAGS_FTI)
