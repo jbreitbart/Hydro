@@ -21,7 +21,8 @@ MPIF90 = mpif90
 
 # C compilation options
 #-----------------------------
-OPT=-xHOST -O3 -ip -no-prec-div
+OPT=-xHOST -O3 -ipo
+#-no-prec-div
 #-O3 -g -vec-report1
 CFLAGS = $(OPT)
 
