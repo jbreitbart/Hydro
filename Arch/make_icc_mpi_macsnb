@@ -1,11 +1,11 @@
 # C compiler
 #------------------
-CC = icc -mmic
-CC = icc -mavx
+CC = mpicc
+#-cc=icc -restrict -xHost
 
 # Cuda compiler
 #------------------
-NVCC = 
+NVCC =
 
 # Fortran compilers
 #------------------
@@ -13,7 +13,7 @@ F90 = ifort
 
 # MPI C compiler
 #------------------
-MPICC = mpicc
+MPICC = mpicc -cc=icc
 
 # MPI Fortran compilers
 #------------------
@@ -21,37 +21,36 @@ MPIF90 = mpif90
 
 # C compilation options
 #-----------------------------
-# PROF=-pg
-CFLAGS = -O3 $(PROF) 
-# -no-vec 
+OPT=-xHOST -O3 -ip -no-prec-div
+#-O3 -g -vec-report1
+CFLAGS = $(OPT)
 
 # Fortran compilation options
 #-----------------------------
-FFLAGS = -O3
+FFLAGS = $(OPT)
 
 # Linker options
 #---------------
-LDFLAGS = -O3 $(PROF) -lnuma 
+LDFLAGS = $(OPT) -lnuma
 
 # OpenMP C compilation options
 #---------------------------
-CFLAGS_OMP = -openmp -openmp-report1 -vec-report1
+CFLAGS_OMP = -qopenmp
+#-openmp-report1
 
 # Cuda compilation options
 #---------------------------
-NVCFLAGS_OMP = 
+NVCFLAGS_OMP =
 
 # OpenMP Fortran compilation options
 #---------------------------
-FFLAGS_OMP = -openmp
+FFLAGS_OMP = -qopenmp
 
 # MPI C compilation options
 #---------------------------
-#MPIROOT=/opt/intel/impi/4.1.0.024/mic
-MPIROOT=/opt/intel/impi/4.1.0.024/intel64
-# MPIROOT=$(MPI_ROOT)
+MPIROOT=$(I_MPI_ROOT)/intel64
 CFLAGS_MPI = -DMPI -I$(MPIROOT)/include
-#NVCFLAGS_MPI = -I$(MPIROOT)/include
+NVCFLAGS_MPI = -I$(MPIROOT)/include
 
 
 # MPI Fortran compilation options
@@ -64,5 +63,17 @@ LDFLAGS_OMP = -openmp
 
 # MPI link options
 #--------------------
-LDFLAGS_MPI = -L$(MPIROOT)/lib -lmpi -Wl,-rpath,$(MPIROOT)/lib
+#LDFLAGS_MPI = -L$(MPIROOT)/lib -lmpi
 
+
+# FTI C compilation options
+#---------------------------
+#FTIROOT= /path/to/fti/install/directory
+#CFLAGS_FTI = -DFTI=1 -I$(FTIROOT)/include
+CFLAGS_FTI = -DFTI=0
+
+#if FTI is not installed keep only -DFTI=0
+
+# FTI link options
+#--------------------
+#LDFLAGS_FTI = -L$(FTIROOT)/lib -lfti
