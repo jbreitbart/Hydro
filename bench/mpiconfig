@@ -1,0 +1,3 @@
+-bootstrap ssh -env KMP_AFFINITY "explicit,proclist=[0-7]"  -np 1 ../hydro -i ../Input/ross.nml 
+               -env KMP_AFFINITY "explicit,proclist=[8-15]" -np 1 ../hydro -i ../Input/ross.nml
+
