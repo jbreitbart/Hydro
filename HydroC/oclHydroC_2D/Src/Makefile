@@ -20,11 +20,10 @@ SRCDIR = .
 
 # Objects
 #------------
-OBJ = SplitSurface.o hydro_funcs.o hydro_utils.o main.o oclCmpflx.o oclComputeDeltat.o oclConservar.o oclConstoprim.o oclEquationOfState.o oclHydroGodunov.o oclInit.o oclMakeBoundary.o oclQleftright.o oclReduce.o oclRiemann.o oclSlope.o oclTrace.o oclerror.o ocltools.o parametres.o utils.o vtkfile.o cclock.o
-
+OBJ = SplitSurface.o hydro_funcs.o hydro_utils.o main.o oclCmpflx.o oclComputeDeltat.o oclConservar.o oclConstoprim.o oclEquationOfState.o oclHydroGodunov.o oclInit.o oclMakeBoundary.o oclQleftright.o oclReduce.o oclRiemann.o oclSlope.o oclTrace.o oclerror.o ocltools.o parametres.o utils.o vtkfile.o cclock.o getDevice.o
 # Sources files
 #--------------
-SRC=SplitSurface.c hydro_funcs.c hydro_utils.c main.c oclCmpflx.c oclComputeDeltat.c oclConservar.c oclConstoprim.c oclEquationOfState.c oclHydroGodunov.c oclInit.c oclMakeBoundary.c oclQleftright.c oclReduce.c oclRiemann.c oclSlope.c oclTrace.c oclerror.c ocltools.c parametres.c utils.c vtkfile.c cclock.c
+SRC=SplitSurface.c hydro_funcs.c hydro_utils.c main.c oclCmpflx.c oclComputeDeltat.c oclConservar.c oclConstoprim.c oclEquationOfState.c oclHydroGodunov.c oclInit.c oclMakeBoundary.c oclQleftright.c oclReduce.c oclRiemann.c oclSlope.c oclTrace.c oclerror.c ocltools.c parametres.c utils.c vtkfile.c cclock.c getDevice.c
  
 
 
@@ -57,10 +56,14 @@ include alldeps.d
 # takes some time so I have not left it active. It is really useful
 # only if you have added new files (either .c .cu or .h)
 
-#alldeps.d: $(SRC)
-#	env CFLAGS='$(CFLAGS)' NVCFLAGS='$(NVCFLAGS)' makedeps > alldeps.d
-run: hydro
-	./hydro -i input.nml -u c
+alldeps.d: $(SRC)
+	env CFLAGS='$(CFLAGS)' NVCFLAGS='$(NVCFLAGS)' makedeps > alldeps.d
+
+burn: hydro
+	rm -rf ~/.nv	# to empty the stupid cache of compiled OpenCL...
+	ccc_mprun -E-JoclBurnK40 -p k40 -n2 -N1 -T36000 ./hydro -i inputMEDIUM.nml -u g
+burnh: hydro
+	ccc_mprun -E-JoclBurnHSW -p haswellb16 -A rdintel -n35 -N35 -T36000 ./hydro -i inputMEDIUM.nml -u c
 
 mic: hydro
 	./hydro -i input.nml -u a

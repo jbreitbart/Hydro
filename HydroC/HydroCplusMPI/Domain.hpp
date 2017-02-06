@@ -33,7 +33,7 @@ class Domain {
 	int m_nvtk;
 	int m_npng;
 	real_t m_tcur, m_dt;	//=
-	int32_t m_iter;	// current iteration
+	int32_t m_iter;		// current iteration
 	int32_t m_nbRun;
 	double m_elapsTotal;
 
@@ -65,12 +65,14 @@ class Domain {
 	int32_t m_nStepMax;	//=
 	int32_t m_nOutput;	//=
 	int32_t m_checkPoint;
+	int32_t m_forceStop;    //=
 
 	real_t *m_localDt;	//=
 	real_t m_tend;		//=
 	real_t m_dtOutput;	//=
 	real_t m_nextOutput;
 	real_t m_dtImage;	//=
+	int32_t m_nImage;       //=
 	real_t m_nextImage;
 	godunovScheme_t m_scheme;	//=
 
@@ -85,6 +87,8 @@ class Domain {
 
 	// misc.
 	char *m_inputFile;
+	int32_t m_fakeRead;
+	int64_t m_fakeReadSize;
 
 	// PNG output
 	int32_t m_withPng;
@@ -100,8 +104,8 @@ class Domain {
 	int32_t m_shrink;
 	int32_t m_shrinkSize;
 	double m_timeGuard;
-	int32_t m_numa;	// try to cope with numa effects
-
+	int32_t m_numa;		// try to cope with numa effects
+	int32_t m_forceSync;
 	// timing of functions
 	double **m_timerLoops;
 
@@ -192,6 +196,9 @@ class Domain {
 	bool isStopped();
 	int getMype() {
 		return m_myPe;
+	};
+	int getNbpe() {
+		return m_nProc;
 	};
 	void compute();
 	int32_t myThread() {

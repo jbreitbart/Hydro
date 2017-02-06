@@ -37,6 +37,7 @@ using namespace std;
 #include "EnumDefs.hpp"
 #include "Domain.hpp"
 #include "Soa.hpp"
+#include "FakeRead.hpp"
 #include "cclock.h"
 
 void Domain::changeDirection()
@@ -211,7 +212,31 @@ void Domain::compute()
 	struct rusage myusage;
 	double giga = 1024 * 1024 * 1024;
 	double totalCellPerSec = 0.0;
+	double minCellPerSec = FLT_MAX;
+	double maxCellPerSec = 0;
+	double ecartCellPerSec = 0;
 	long nbTotCelSec = 0;
+	FakeRead *reader = 0;
+
+	if (m_myPe == 0 && m_fakeRead) {
+		fprintf(stderr, "HydroC: Creating fake paging file(s) ...\n");
+	}
+	start = dcclock();
+	if (m_fakeRead)
+		reader = new FakeRead(m_fakeReadSize, m_myPe);
+#ifdef MPI_ON
+	if (m_nProc > 1)
+		MPI_Barrier(MPI_COMM_WORLD);
+#endif
+	end = dcclock();
+
+	if (m_myPe == 0 && m_fakeRead) {
+		char txt[64];
+		double elaps = end - start;
+		convertToHuman(txt, elaps);
+		fprintf(stderr, "HydroC: Creating fake paging file(s) done in %s.\n", txt);
+	}
+
 	memset(vtkprt, 0, 64);
 
 #ifdef _OPENMP
@@ -219,7 +244,7 @@ void Domain::compute()
 		cout << "Hydro: OpenMP max threads " << omp_get_max_threads() << endl;
 		// cout << "Hydro: OpenMP num threads " << omp_get_num_threads() << endl;
 		cout << "Hydro: OpenMP num procs   " << omp_get_num_procs() << endl;
-		cout << "Hydro: OpenMP "<< Schedule << endl;
+		cout << "Hydro: OpenMP " << Schedule << endl;
 	}
 #endif
 #ifdef MPI_ON
@@ -257,38 +282,71 @@ void Domain::compute()
 	dt = m_dt;
 
 	while (m_tcur < m_tend) {
-		if (m_nStepMax > 0) {
-			if (n >= m_nStepMax)
-				break;
-		}
+		int needSync = 0;
 		vtkprt[0] = '\0';
 		if ((m_iter % 2) == 0) {
 			m_dt = dt;	// either the initial one or the one computed by the time step
 		}
+		if (reader)
+			reader->Read(m_fakeRead);
 
-		startstep = dcclock();
-		dt = computeTimeStep();
-		endstep = dcclock();
-		elpasstep = endstep - startstep;
+		//
+		// - - - - - - - - - - - - - - - - - - -
+		//
+		{
+			startstep = dcclock();
+			dt = computeTimeStep();
+			endstep = dcclock();
+			elpasstep = endstep - startstep;
+		}
+		//
+		// - - - - - - - - - - - - - - - - - - -
+		//
 		// m_dt = 1.e-3;
 		m_tcur += m_dt;
 		n++;		// iteration of this run
 		m_iter++;	// global iteration of the computation (accross runs)
 
-		if ((m_nOutput > 0) && ((n % m_nOutput) == 0)) {
+		if (m_nStepMax > 0) {
+			if (m_iter > m_nStepMax)
+				break;
+		}
+
+		int outputVtk = 0;
+		if (m_nOutput > 0) {
+			if ((m_iter % m_nOutput) == 0) {
+				outputVtk++;
+			}
+		}
+		if (m_dtOutput > 0) {
+			if (m_tcur > m_nextOutput) {
+				m_nextOutput += m_dtOutput;
+				outputVtk++;
+			}
+		}
+		if (outputVtk) {
 			vtkOutput(m_nvtk);
 			sprintf(vtkprt, "[%05d]", m_nvtk);
 			m_nvtk++;
+			needSync++;
 		}
-		if ((m_dtOutput > 0) && (m_tcur > m_nextOutput)) {
-			m_nextOutput += m_dtOutput;
-			vtkOutput(m_nvtk);
-			sprintf(vtkprt, "[%05d]", m_nvtk);
-			m_nvtk++;
+
+		int outputImage = 0;
+		if (m_dtImage > 0) {
+			if (m_tcur > m_nextImage) {
+				m_nextImage += m_dtImage;
+				outputImage++;
+			}
 		}
-		if ((m_dtImage > 0) && (m_tcur > m_nextImage)) {
-			m_nextImage += m_dtImage;
+		if (m_nImage > 0) {
+			if ((m_iter % m_nImage) == 0) {
+				outputImage++;
+			}
+		}
+
+		if (outputImage) {
 			char pngName[256];
+			m_npng++;
 			pngProcess();
 #if WITHPNG > 0
 			sprintf(pngName, "%s_%06d.png", "Image", m_npng);
@@ -298,21 +356,40 @@ void Domain::compute()
 			pngWriteFile(pngName);
 			pngCloseFile();
 			sprintf(vtkprt, "%s (%05d)", vtkprt, m_npng);
-			m_npng++;
 		}
 		double resteAll = m_tr.timeRemain() - m_timeGuard;
 		if (m_myPe == 0) {
 			int64_t totCell = int64_t(m_globNx) * int64_t(m_globNy);
 			double cellPerSec = totCell / elpasstep / 1000000;
+			char ftxt[32];
+			ftxt[0] = '\0';
 			if (n > 4) {
 				// skip the 4 first iterations to let the system stabilize
 				totalCellPerSec += cellPerSec;
 				nbTotCelSec++;
+				if (cellPerSec > maxCellPerSec)
+					maxCellPerSec = cellPerSec;
+				if (cellPerSec < minCellPerSec)
+					minCellPerSec = cellPerSec;
+				ecartCellPerSec += (cellPerSec * cellPerSec);
 			}
-			fprintf(stdout, "Iter %6d Time %-13.6g Dt %-13.6g (%f %f Mc/s %f GB) %lf %s \n",
-				m_iter, m_tcur, m_dt, elpasstep, cellPerSec, float (getMemUsed() / giga), resteAll, vtkprt);
+			if (m_forceSync && needSync) {
+				double startflush = dcclock();
+				sync();
+				sync();
+				sync();
+				double endflush = dcclock();
+				double elapsflush = endflush - startflush;
+				sprintf(ftxt, "{f:%.4lf}", elapsflush);
+			}
+			if (reader)
+				sprintf(ftxt, "%s r", ftxt);
+
+			fprintf(stdout, "Iter %6d Time %-13.6g Dt %-13.6g ( %7.3f s %7.3f Mc/s %7.3f GB) %lf %s %s\n",
+				m_iter, m_tcur, m_dt, elpasstep, cellPerSec, float (getMemUsed() / giga), resteAll, vtkprt, ftxt);
 			fflush(stdout);
 		}
+
 		{
 			int needToStopGlob = false;
 			if (m_myPe == 0) {
@@ -354,6 +431,14 @@ void Domain::compute()
 			cerr << "Write protection in " << txt << " (" << elaps << "s)" << endl;
 		}
 	}
+
+	if (m_nStepMax > 0) {
+		if (m_iter > m_nStepMax) {
+			if (m_forceStop) {
+				StopComputation();
+			}
+		}
+	}
 	if (m_tcur >= m_tend) {
 		StopComputation();
 	}
@@ -368,39 +453,41 @@ void Domain::compute()
 	if (m_myPe == 0) {
 		char timeHuman[256];
 		long maxMemUsed = getMemUsed();
-		cout << "End of computations in " << setiosflags(ios::fixed) << setprecision(3) << (end - start);
-		cout << " s ";
-		cout << " (";
+		double elaps = (end - start);
+		printf("End of computations in %.3lf s (", elaps);
 		convertToHuman(timeHuman, (end - start));
-		cout << timeHuman;
-		cout << ")";
-		cout << " with " << m_nbtiles << " tiles";
+		printf("%s) with %d tiles", timeHuman, m_nbtiles);
 #ifdef _OPENMP
-		cout << " using " << m_numThreads << " threads";
+		printf(" using %d threads", m_numThreads);
 #endif
 #ifdef MPI_ON
-		cout << " and " << m_nProc << " MPI tasks";
+		printf(" and %d MPI tasks", m_nProc);
 #endif
-		// cout << " maxRSS " << m_maxrss;
-		cout << std::resetiosflags(std::ios::showbase) << setprecision(3) << setiosflags(ios::fixed);
-		cout << " maxMEM " << float (maxMemUsed / giga) << "GB";
-		cout << endl;
+		printf(" maxMEMproc %.3fGB", float (maxMemUsed / giga));
+		if (getNbpe() > 1) {
+			printf(" maxMEMtot %.3fGB", float (maxMemUsed * getNbpe() / giga));
+		}
+		printf("\n");
 		convertToHuman(timeHuman, m_elapsTotal);
-		cout << "Total simulation time: " << timeHuman << " in " << m_nbRun << " runs" << endl;
-		cout << "Average MC/s: " << totalCellPerSec / nbTotCelSec << endl;
-
+		printf("Total simulation time: %s in %d runs\n", timeHuman, m_nbRun);
+		double avgCellPerSec = totalCellPerSec / nbTotCelSec;
+		printf("Average MC/s: %.3lf", avgCellPerSec);
+		ecartCellPerSec = sqrt((ecartCellPerSec / nbTotCelSec) - (avgCellPerSec * avgCellPerSec));
+		printf(" min %.3lf, max %.3lf, sig %.3lf\n", minCellPerSec, maxCellPerSec, ecartCellPerSec);
 #if WITH_TIMERS == 1
-		cout.precision(4);
+		// cout.precision(4);
 		for (int32_t i = 0; i < m_numThreads; i++) {
-			cout << "THread " << i << " ";
+			printf("Thread %4d: ", i);
 			for (int32_t j = 0; j < LOOP_END; j++) {
-				cout << (m_timerLoops[i])[j] << " ";
+				printf("%lf ", (m_timerLoops[i])[j]);
 			}
-			cout << endl;
+			printf("\n");
 		}
 #endif
 
 	}
+	if (reader)
+		delete reader;
 	// cerr << "End compute " << m_myPe << endl;
 }
 
